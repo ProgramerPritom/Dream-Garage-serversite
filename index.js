@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express()
@@ -20,6 +21,9 @@ async function run(){
 
       await client.connect();
       const productCollection = client.db('Dream-motors').collection('products');
+      const ordersCollection = client.db('Dream-motors').collection('orders');
+      const reviewCollection = client.db('Dream-motors').collection('reviews');
+      const usersCollection = client.db('Dream-motors').collection('users');
 
 
       // Products API-----------------------------
@@ -28,7 +32,13 @@ async function run(){
         const cursor = productCollection.find(query);
         const result = await cursor.toArray();
         res.send(result);
-      });
+      })
+
+      app.post('/products', async(req,res) =>{
+        const products = req.body;
+        const storeProduct = await productCollection.insertOne(products);
+        res.send(storeProduct);
+      })
 
       app.get('/products/:id', async(req, res)=>{
         const id = req.params.id;
@@ -37,7 +47,79 @@ async function run(){
         res.send(getProduct);
       })
 
+      app.put('/products/:id', async (req,res)=>{
+        const id = req.params.id;
+          const updatedProductInfo = req.body;
+          const filter = {_id: ObjectId(id)};
+          const options={upsert: true};
+          const updateDoc = {
+            $set: updatedProductInfo,
+          };
+          const result = await productCollection.updateOne(filter, updateDoc, options);
+          res.send(result);
+      })
 
+      app.delete('/products/:id', async(req,res) =>{
+          const id = req.params.id;
+          const filter = {_id : ObjectId(id)};
+          const result = await productCollection.deleteOne(filter);
+          res.send(result);
+      })
+
+
+
+      // Orders Collection
+      app.get('/orders', async(req,res)=>{
+        const query = {};
+        const cursor = ordersCollection.find(query);
+        const result = await cursor.toArray();
+        res.send(result);
+      })
+      app.post('/orders', async(req,res) =>{
+        const orders = req.body;
+        const setOrder = await ordersCollection.insertOne(orders);
+        res.send(setOrder);
+      })
+
+      app.get('/bookingOrders', async(req,res) => {
+        const bookingEmail = req.query.userMail;
+        const authorization = req.headers.authorization;
+        console.log('auth is ',authorization)
+        const query = {email : bookingEmail};
+        const result = await ordersCollection.find(query).toArray();
+        res.send(result);
+      })
+
+      // Review Collection
+
+
+      app.get('/reviews', async(req,res) =>{
+        const review ={};
+        const result = await reviewCollection.find(review).toArray();
+        res.send(result);
+      })
+
+      app.post('/reviews', async (req,res) =>{
+        const review = req.body;
+        const setReview = await reviewCollection.insertOne(review);
+        res.send(setReview);
+      })
+
+      // Users Collection system
+      app.put('/user/:email', async (req,res) =>{
+        const email = req.params.email;
+        const user = req.body;
+        const filter = {email : email};
+        const options={upsert: true};
+        const updateDoc = {
+          $set: user
+        };
+        const result = await usersCollection.updateOne(filter, updateDoc, options);
+        const token = jwt.sign({email : email}, process.env.ACCESS_TOKEN_SECRET)
+        res.send({result,token});
+      })
+
+    
 
 
 
