@@ -16,6 +16,24 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.rp3w7qx.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
+
+function verifyJWT (req, res, next) {
+        const authHeader = req.headers.authorization;
+        if(!authHeader){
+          return res.status(401).send({message: 'UnAuthorized access'});
+        }
+        const token = authHeader.split(' ')[1];
+        jwt.verify(token,process.env.ACCESS_TOKEN_SECRET, function(err, decoded) {
+          if (err) {
+            return res.status(403).send({message: 'Forbidden access'})
+          }
+          req.decoded = decoded;
+          next();
+        });
+}
+
+
+
 async function run(){
   try {
 
@@ -81,13 +99,17 @@ async function run(){
         res.send(setOrder);
       })
 
-      app.get('/bookingOrders', async(req,res) => {
+      app.get('/bookingOrders',verifyJWT, async(req,res) => {
         const bookingEmail = req.query.userMail;
-        const authorization = req.headers.authorization;
-        console.log('auth is ',authorization)
-        const query = {email : bookingEmail};
-        const result = await ordersCollection.find(query).toArray();
-        res.send(result);
+        const decodedEmail = req.decoded.email;
+        if (bookingEmail === decodedEmail) {
+          const query = {email : bookingEmail};
+          const result = await ordersCollection.find(query).toArray();
+          res.send(result);
+        }
+        else{
+          return res.status(403).send({message: 'forbidden access'})
+        }
       })
 
       // Review Collection
@@ -106,6 +128,39 @@ async function run(){
       })
 
       // Users Collection system
+      app.get('/user', verifyJWT, async(req,res) =>{
+        const users = await usersCollection.find().toArray();
+        res.send(users);
+      })
+
+      app.get('/admin/:email', async(req,res)=>{
+        const email = req.params.email;
+        const user = await usersCollection.findOne({email: email});
+        const isAdmin = user.role === 'admin';
+        res.send({admin: isAdmin});
+      })
+
+
+
+      app.put('/user/admin/:email',verifyJWT, async (req,res) =>{
+        const email = req.params.email;
+        const requester = req.decoded.email;
+        const requesterAccount = await usersCollection.findOne({email: requester});
+        if (requesterAccount.role === 'admin') {
+          const filter = {email : email};
+          const options={upsert: true};
+          const updateDoc = {
+            $set: {role : 'admin'}
+          };
+          const result = await usersCollection.updateOne(filter, updateDoc, options);
+          
+          res.send(result);
+        }
+        else{
+          res.status(403).send({message: 'forbidden'});
+        }
+        
+      })
       app.put('/user/:email', async (req,res) =>{
         const email = req.params.email;
         const user = req.body;
